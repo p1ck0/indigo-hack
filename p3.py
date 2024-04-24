@@ -2,8 +2,10 @@ import requests
 from bs4 import BeautifulSoup
 import csv
 from pathlib import Path
+import urllib.parse
+import json
 
-cookie_token = "PHPSESSID=e43c4e5fcc5c3dc714a7c8f24e0ba871"
+cookie_token = "PHPSESSID=3dc283f8a0ef662af6d4bd5fb0d46b1d"
 headers = {
     'Content-Type': 'application/x-www-form-urlencoded',
     'Accept': '*/*',
@@ -20,7 +22,7 @@ headers = {
 }
 
 field_names = ["Task", "Answers"]
-filename = 'text7.csv'
+filename = "C:/Users/хихи/text7.csv"
 
 
 existing_data = {}
@@ -31,12 +33,6 @@ if Path(filename).exists():
             existing_data[row["Task"]] = row["Answers"]
 
 
-
-start = requests.post(
-    "http://83.219.130.176/modules/testing/testing.php",
-    headers=headers,
-    data="user_action=start"
-)
 
 user_action = 'start'
 
@@ -52,9 +48,33 @@ for i in range(22):
     answers_from_file = existing_data.get(question_text)
     tr_answers = soup.findAll('tr')
 
-    try:
-        answers_and_ids = [(tr.find('input')['res_answer_id'], tr.find('label').text) for tr in tr_answers]
+    answers_and_ids = []
+    is_table = False
+    for tr in tr_answers:
+        if tr.get('valign'):
+            break
+        input = tr.find('input')
+        if input:
+            answers_and_ids.append((input['res_answer_id'], tr.find('label').text))
+        else:
+            is_table = True
+            left_col = tr.find('td', class_='left_column').text
+            right_col = tr.find('td', class_='right_column')
+            fixed_row_id = right_col.find('select')['id']
+            answer_values = right_col.findAll('option')
+            for v in answer_values:
+                if left_col in answers_from_file:
+                    answer = json.loads(answers_from_file.replace("'",'"'))
+                    if answer[0][left_col] == v.text:
+                        requests.post(
+                            "http://83.219.130.176/modules/testing/submit.php",
+                            headers=headers,
+                            data=f'position={i}&fixed_row_id={fixed_row_id}&answer_value={v["value"]}'
+                        )
+                        break
 
+
+    if answers_and_ids and not is_table:
         for idx, answer_text in answers_and_ids:
             if answer_text in answers_from_file:
                 send_answer_request = requests.post(
@@ -62,13 +82,13 @@ for i in range(22):
                     headers=headers,
                     data=f"position={i}&res_answer_id={idx}&answer_value=1"
                 )
-    except:
+    elif not is_table:
+        safe_string = urllib.parse.quote_plus(answers_from_file[2:-2])
         requests.post(
                     "http://83.219.130.176/modules/testing/submit.php",
                     headers=headers,
-                    data=f"position={i}&answer_value={answers_from_file[2:-2]}"
+                    data=f"position={i}&answer_value={safe_string}"
                 )
-
     
     user_action = 'next'
     
